@@ -40,7 +40,7 @@ Perfect for AI agent sandboxes, Claude Code demos, and remote supervision.
   mog bun run dev             Share a dev server
 
 \x1b[1mOptions:\x1b[0m
-  --readonly, -r    Viewers cannot type (default: interactive)
+  --interactive, -i Allow viewers to type (default: read-only)
   --record, -R      Record session to ~/.mog/<timestamp>.cast
   --port PORT       Use specific port (default: random 7000-8000)
   --no-tunnel       Skip cloudflare tunnel (localhost only)
@@ -60,7 +60,8 @@ Perfect for AI agent sandboxes, Claude Code demos, and remote supervision.
 }
 
 // Parse flags
-const readonly = args.includes("--readonly") || args.includes("-r");
+const interactive = args.includes("--interactive") || args.includes("-i");
+const readonly = !interactive;
 const record = args.includes("--record") || args.includes("-R");
 const noTunnel = args.includes("--no-tunnel");
 const rawMode = args.includes("--raw");
@@ -89,8 +90,8 @@ if (replayIndex !== -1) {
 
 // Remove flags from command
 const flagsToRemove = [
-  "--readonly",
-  "-r",
+  "--interactive",
+  "-i",
   "--record",
   "-R",
   "--no-tunnel",
@@ -220,7 +221,7 @@ console.log(`\x1b[90m│\x1b[0m  \x1b[1;36m${publicUrl}\x1b[0m  \x1b[90m│\x1b[
 console.log(`\x1b[90m└${"─".repeat(publicUrl.length + 4)}┘\x1b[0m`);
 console.log();
 console.log(`\x1b[90mSharing:\x1b[0m ${cmd.join(" ")}`);
-if (readonly) console.log(`\x1b[90mMode:\x1b[0m read-only (viewers cannot type)`);
+if (interactive) console.log(`\x1b[90mMode:\x1b[0m interactive (viewers can type)`);
 if (recordFile) console.log(`\x1b[90mRecording:\x1b[0m ${recordFile}`);
 if (!rawMode) console.log(`\x1b[90mWeb UI:\x1b[0m http://localhost:${port}`);
 console.log(`\x1b[90mPress Ctrl+C to stop\x1b[0m`);

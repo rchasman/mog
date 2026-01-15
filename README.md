@@ -16,7 +16,7 @@
 <p align="center">
   <a href="#install">Install</a> •
   <a href="#usage">Usage</a> •
-  <a href="#emergent-behavior">Emergent Behavior</a> •
+  <a href="#examples">Examples</a> •
   <a href="#how-it-works">How It Works</a>
 </p>
 
@@ -43,8 +43,8 @@ git clone https://github.com/rchasman/mog && cd mog && bun link
 ## Usage
 
 ```bash
-mog bash                     # Share a shell
-mog --readonly claude        # Safe demo mode
+mog bash                     # Share a shell (read-only by default)
+mog -i bash                  # Allow viewers to type
 mog --record bun run dev     # Record for replay
 ```
 
@@ -58,9 +58,9 @@ Press Ctrl+C to stop
 ✓ URL copied to clipboard
 ```
 
-## Emergent Behavior
+## Examples
 
-mog is a primitive. Compose it with other commands and interesting things emerge.
+mog is a primitive. Compose it with anything.
 
 ### Watch AI Agents Work
 ```bash
@@ -141,7 +141,7 @@ The pattern: `mog <command>` → instant public URL.
 
 | Flag | Description |
 |------|-------------|
-| `--readonly, -r` | Viewers cannot type |
+| `--interactive, -i` | Allow viewers to type (default: read-only) |
 | `--record, -R` | Save to `~/.mog/<timestamp>.cast` |
 | `--replay <file>` | Replay recorded session |
 | `--port <PORT>` | Specific port (default: random) |

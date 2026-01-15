@@ -358,24 +358,32 @@ if (!noTunnel) {
 // Build shareable URL
 const shareUrl = token ? `${publicUrl}?token=${token}` : publicUrl;
 
+// Visual toggle display
+const on = (label: string) => `\x1b[32m●\x1b[0m ${label}`;
+const off = (label: string) => `\x1b[90m○ ${label}\x1b[0m`;
+
+const toggles = [
+  token ? on("token") : off("token"),
+  isPublic ? on("public") : off("public"),
+  interactive ? on("interactive") : off("interactive"),
+  consensusMode
+    ? on(`consensus${consensusFixed !== null ? ` (${consensusFixed})` : " (auto)"}`)
+    : off("consensus"),
+  record ? on("recording") : off("recording"),
+];
+
 // Print the URL
 console.log();
 console.log(`\x1b[90m┌${"─".repeat(shareUrl.length + 4)}┐\x1b[0m`);
 console.log(`\x1b[90m│\x1b[0m  \x1b[1;36m${shareUrl}\x1b[0m  \x1b[90m│\x1b[0m`);
 console.log(`\x1b[90m└${"─".repeat(shareUrl.length + 4)}┘\x1b[0m`);
 console.log();
-console.log(`\x1b[90mSharing:\x1b[0m ${cmd.join(" ")}`);
-if (token) console.log(`\x1b[90mAccess:\x1b[0m token required`);
-if (isPublic) console.log(`\x1b[90mAccess:\x1b[0m public ${interactive ? "(interactive)" : "(read-only)"}`);
-if (consensusMode) {
-  if (consensusFixed !== null) {
-    console.log(`\x1b[90mConsensus:\x1b[0m ${consensusFixed} votes required`);
-  } else {
-    console.log(`\x1b[90mConsensus:\x1b[0m auto-scaling (majority rule)`);
-  }
-}
-if (recordFile) console.log(`\x1b[90mRecording:\x1b[0m ${recordFile}`);
-console.log(`\x1b[90mPress Ctrl+C to stop\x1b[0m`);
+console.log(`\x1b[90m$\x1b[0m ${cmd.join(" ")}`);
+console.log();
+console.log(toggles.join("  "));
+console.log();
+if (recordFile) console.log(`\x1b[90mRecording to:\x1b[0m ${recordFile}`);
+console.log(`\x1b[90mCtrl+C to stop\x1b[0m`);
 console.log();
 
 // Copy to clipboard (macOS)

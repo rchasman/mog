@@ -5,120 +5,155 @@
 <h1 align="center">mog</h1>
 
 <p align="center">
-  <strong>Watch your AI agents work.</strong>
+  <strong>A primitive for watching terminals.</strong>
 </p>
 
 <p align="center">
   Stream any terminal session to a public URL in seconds.<br>
-  Built for AI agent sandboxes, Claude Code demos, and remote supervision.
+  One command. Instant URL. No server. No account.
 </p>
 
 <p align="center">
   <a href="#install">Install</a> •
   <a href="#usage">Usage</a> •
-  <a href="#why">Why</a> •
-  <a href="#integrations">Integrations</a>
+  <a href="#emergent-behavior">Emergent Behavior</a> •
+  <a href="#how-it-works">How It Works</a>
 </p>
 
 ---
 
-## Why
+## Why a Primitive?
 
-Existing agent observability tools show you traces and metrics.
+mog does one thing: wrap any command in a shareable terminal.
 
-**mog shows you the actual terminal** — watch your agent type, run commands, and edit files in real-time.
+What you build with it is up to you.
 
-| Tool | What you see |
-|------|--------------|
-| LangSmith | "Agent made 5 tool calls, 2.3k tokens" |
-| **mog** | *Agent typing `git diff`, running tests, fixing bugs* |
+```bash
+mog <anything>
+# → https://random-words.trycloudflare.com
+```
 
 ## Install
 
 ```bash
-# Dependencies
 brew install ttyd cloudflared
-
-# Install mog
-bun install -g mog
-# or clone and link
-git clone https://github.com/roeychasman/mog && cd mog && bun link
+git clone https://github.com/rchasman/mog && cd mog && bun link
 ```
 
 ## Usage
 
 ```bash
-# Watch Claude Code work
-mog claude
-
-# Share any command
-mog bash
-mog htop
-mog bun run dev
-
-# Options
-mog --readonly claude    # Viewers can't type
-mog --record bash        # Save session for replay
-mog --no-tunnel bash     # Localhost only
+mog bash                     # Share a shell
+mog --readonly claude        # Safe demo mode
+mog --record bun run dev     # Record for replay
 ```
-
-Prints a public URL, copies to clipboard. Share with your team:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  https://random-words-here.trycloudflare.com                 │
 └──────────────────────────────────────────────────────────────┘
 Sharing: claude
-Web UI: http://localhost:7123
 Press Ctrl+C to stop
 
 ✓ URL copied to clipboard
 ```
 
+## Emergent Behavior
+
+mog is a primitive. Compose it with other commands and interesting things emerge.
+
+### Watch AI Agents Work
+```bash
+mog claude                              # Claude Code session
+mog aider                               # Aider coding agent
+mog goose session start                 # Block's Goose agent
+mog agentfs exec sandbox.db bash        # Agent in isolated filesystem
+```
+
+### Live Dashboards
+```bash
+mog htop                                # System monitor
+mog btop                                # Pretty resource monitor
+mog watch -n1 kubectl get pods          # Kubernetes dashboard
+mog tail -f /var/log/syslog             # Live log stream
+```
+
+### Collaborative Debugging
+```bash
+mog ssh prod-server                     # Share SSH session
+mog docker exec -it api sh              # Inside a container
+mog kubectl exec -it pod -- sh          # Inside a pod
+mog gdb ./crash-dump                    # Debug session
+```
+
+### Build & Deploy Visibility
+```bash
+mog npm run build                       # Watch builds
+mog docker build -t app .               # Container builds
+mog terraform apply                     # Infrastructure changes
+mog ansible-playbook deploy.yml         # Deployments
+```
+
+### Database Operations
+```bash
+mog psql -d production                  # Postgres session
+mog mongosh                             # MongoDB shell
+mog redis-cli monitor                   # Redis commands live
+mog sqlite3 app.db                      # SQLite explorer
+```
+
+### Git & Code Review
+```bash
+mog tig                                 # Git history browser
+mog lazygit                             # Git TUI
+mog git log --oneline --graph           # Commit graph
+mog diff-so-fancy < changes.diff        # Pretty diffs
+```
+
+### Pair Programming
+```bash
+mog vim                                 # Share vim session
+mog nvim                                # Neovim
+mog emacs -nw                           # Emacs in terminal
+mog micro                               # Micro editor
+```
+
+### Network & Security
+```bash
+mog tcpdump -i any                      # Packet capture
+mog nmap -sV target                     # Port scanning
+mog wireshark -i eth0 -k                # Traffic analysis
+mog mtr google.com                      # Network diagnostics
+```
+
+### Creative Uses
+```bash
+mog cmatrix                             # Matrix rain
+mog asciiquarium                        # Fish tank
+mog sl                                  # Steam locomotive
+mog hollywood                           # Hacker movie mode
+mog --record bash                       # Record & replay later
+```
+
+The pattern: `mog <command>` → instant public URL.
+
 ## Options
 
 | Flag | Description |
 |------|-------------|
-| `--readonly, -r` | Viewers cannot type (safe for demos) |
-| `--record, -R` | Record session to `~/.mog/<timestamp>.cast` |
-| `--replay <file>` | Replay a recorded session |
-| `--port <PORT>` | Use specific port (default: random 7000-8000) |
-| `--no-tunnel` | Skip public URL (localhost only) |
-| `--raw` | Use raw ttyd without web UI wrapper |
-
-## Integrations
-
-### Claude Code
-```bash
-mog claude
-# Stakeholders watch your coding agent work
-```
-
-### AgentFS Sandboxes
-```bash
-mog agentfs exec agent.db bash
-# Watch agents in isolated filesystems
-```
-
-### Remote Agents
-```bash
-mog ssh agent@server "cd /workspace && bash"
-# Debug why an agent is stuck
-```
-
-### Session Recording
-```bash
-mog --record claude
-# Review what the agent did later
-mog --replay ~/.mog/1234567890.cast
-```
+| `--readonly, -r` | Viewers cannot type |
+| `--record, -R` | Save to `~/.mog/<timestamp>.cast` |
+| `--replay <file>` | Replay recorded session |
+| `--port <PORT>` | Specific port (default: random) |
+| `--no-tunnel` | Localhost only |
+| `--raw` | Skip web UI, raw ttyd |
 
 ## How It Works
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────────────┐
 │   Your      │────▶│    mog       │────▶│  Cloudflare Tunnel  │
-│  Terminal   │     │  (ttyd+UI)   │     │  (public URL)       │
+│  Command    │     │  (ttyd+UI)   │     │  (public URL)       │
 └─────────────┘     └──────────────┘     └─────────────────────┘
                            │
                            ▼
@@ -128,20 +163,11 @@ mog --replay ~/.mog/1234567890.cast
                     └──────────────┘
 ```
 
-- **[ttyd](https://github.com/tsl0922/ttyd)** — Battle-tested terminal-over-web
-- **[cloudflared](https://github.com/cloudflare/cloudflared)** — Instant public tunnels, no account needed
-- **Web UI** — Clean status display, copy URL button, connection state
+Built on:
+- **[ttyd](https://github.com/tsl0922/ttyd)** — Terminal over WebSocket
+- **[cloudflared](https://github.com/cloudflare/cloudflared)** — Instant tunnels
 
-No server to deploy. No accounts. Just run the command.
-
-## Development
-
-```bash
-git clone https://github.com/roeychasman/mog
-cd mog
-bun install
-bun ./mog.ts --no-tunnel bash
-```
+No server. No account. Just the primitive.
 
 ## License
 

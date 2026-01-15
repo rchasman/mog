@@ -41,7 +41,7 @@ Perfect for AI agent sandboxes, Claude Code demos, and remote supervision.
 \x1b[1mOptions:\x1b[0m
   --public          No token required (default: token required)
   --interactive, -i Allow viewers to type (default: read-only)
-  --consensus N     Viewers vote on commands, N votes to execute
+  --consensus [N]   Viewers vote on commands (N=fixed, omit=auto-scale)
   --record, -R      Record session to ~/.mog/<timestamp>.cast
   --port PORT       Use specific port (default: random 7000-8000)
   --no-tunnel       Skip cloudflare tunnel (localhost only)
@@ -69,7 +69,17 @@ const noTunnel = args.includes("--no-tunnel");
 const rawMode = args.includes("--raw");
 const consensusIndex = args.findIndex((a) => a === "--consensus");
 const consensusArg = consensusIndex !== -1 ? args[consensusIndex + 1] : undefined;
-const consensus = consensusArg ? parseInt(consensusArg) : 0;
+// -1 = auto-scaling, 0 = disabled, N = fixed threshold
+const consensusMode = consensusIndex !== -1;
+const consensusFixed = consensusArg && !isNaN(parseInt(consensusArg)) ? parseInt(consensusArg) : null;
+
+// Auto-scaling: majority rule - ceil((viewers + 1) / 2)
+const getRequiredVotes = (viewerCount: number): number => {
+  if (!consensusMode) return 0;
+  if (consensusFixed !== null) return consensusFixed;
+  // Auto: need majority (more than half)
+  return Math.ceil((viewerCount + 1) / 2);
+};
 const portIndex = args.findIndex((a) => a === "--port");
 const portArg = portIndex !== -1 ? args[portIndex + 1] : undefined;
 const port = portArg ? parseInt(portArg) : 7000 + Math.floor(Math.random() * 1000);
@@ -167,10 +177,10 @@ const sessionConfig = {
   terminalUrl: `http://localhost:${ttydPort}`,
   publicUrl,
   command: cmd.join(" "),
-  readonly: consensus > 0 ? true : readonly, // Consensus mode forces read-only display
+  readonly: consensusMode ? true : readonly, // Consensus mode forces read-only display
   recording: record,
   token,
-  consensus,
+  consensus: consensusFixed ?? (consensusMode ? -1 : 0), // -1 = auto-scaling
 };
 
 // Consensus mode state
@@ -179,6 +189,7 @@ const proposals: Map<string, Proposal> = new Map();
 const viewers: Set<unknown> = new Set();
 
 const broadcastState = () => {
+  const required = getRequiredVotes(viewers.size);
   const state = {
     type: "state",
     proposals: [...proposals.values()].map((p) => ({
@@ -188,7 +199,8 @@ const broadcastState = () => {
       proposer: p.proposer,
     })),
     viewers: viewers.size,
-    consensus,
+    required, // Dynamic based on viewer count
+    auto: consensusFixed === null && consensusMode, // Is auto-scaling?
   };
   const msg = JSON.stringify(state);
   viewers.forEach((ws) => {
@@ -228,7 +240,7 @@ if (!rawMode) {
       }
 
       // WebSocket upgrade for consensus mode
-      if (url.pathname === "/ws" && consensus > 0) {
+      if (url.pathname === "/ws" && consensusMode) {
         const viewerId = crypto.randomUUID().slice(0, 8);
         const upgraded = server.upgrade(req, { data: { viewerId } });
         if (upgraded) return undefined;
@@ -260,7 +272,7 @@ if (!rawMode) {
         broadcastState();
       },
       message(ws, message) {
-        if (consensus === 0) return;
+        if (!consensusMode) return;
 
         try {
           const data = JSON.parse(String(message));
@@ -282,8 +294,9 @@ if (!rawMode) {
             if (proposal) {
               proposal.votes.add(viewerId);
 
-              // Check consensus
-              if (proposal.votes.size >= consensus) {
+              // Check consensus (dynamic based on viewer count)
+              const required = getRequiredVotes(viewers.size);
+              if (proposal.votes.size >= required) {
                 executeCommand(proposal.command);
                 proposals.delete(data.id);
                 // Broadcast execution
@@ -352,7 +365,13 @@ console.log();
 console.log(`\x1b[90mSharing:\x1b[0m ${cmd.join(" ")}`);
 if (token) console.log(`\x1b[90mAccess:\x1b[0m token required`);
 if (isPublic) console.log(`\x1b[90mAccess:\x1b[0m public ${interactive ? "(interactive)" : "(read-only)"}`);
-if (consensus > 0) console.log(`\x1b[90mConsensus:\x1b[0m ${consensus} votes required to execute`);
+if (consensusMode) {
+  if (consensusFixed !== null) {
+    console.log(`\x1b[90mConsensus:\x1b[0m ${consensusFixed} votes required`);
+  } else {
+    console.log(`\x1b[90mConsensus:\x1b[0m auto-scaling (majority rule)`);
+  }
+}
 if (recordFile) console.log(`\x1b[90mRecording:\x1b[0m ${recordFile}`);
 console.log(`\x1b[90mPress Ctrl+C to stop\x1b[0m`);
 console.log();

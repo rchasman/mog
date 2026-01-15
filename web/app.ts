@@ -101,7 +101,7 @@ const init = async (): Promise<void> => {
         </div>
         ${config.readonly && !config.consensus ? '' : '<div class="status-item"><span class="badge badge-neutral">interactive</span></div>'}
         ${config.recording ? '<div class="status-item"><span class="badge badge-recording"><span class="pulse-dot"></span>recording</span></div>' : ''}
-        ${config.consensus ? `<div class="status-item"><span class="badge badge-info">${config.consensus} votes needed</span></div>` : ''}
+        ${config.consensus !== 0 ? `<div class="status-item"><span class="badge badge-info" id="votes-needed">${config.consensus === -1 ? 'auto' : config.consensus} votes</span></div>` : ''}
         ${config.consensus ? '<div class="status-item"><span class="badge badge-neutral" id="viewer-count">0 watching</span></div>' : ''}
       </div>
 
@@ -204,7 +204,7 @@ const init = async (): Promise<void> => {
   });
 
   // Consensus mode WebSocket
-  if (config.consensus > 0) {
+  if (config.consensus !== 0) {
     const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${wsProtocol}//${window.location.host}/ws${window.location.search}`;
     const ws = new WebSocket(wsUrl);
@@ -213,8 +213,11 @@ const init = async (): Promise<void> => {
     const proposeInput = document.getElementById("propose-input") as HTMLInputElement;
     const proposeBtn = document.getElementById("propose-btn")!;
     const viewerCount = document.getElementById("viewer-count")!;
+    const votesNeeded = document.getElementById("votes-needed");
 
-    const renderProposals = (proposals: Proposal[]) => {
+    let currentRequired = config.consensus === -1 ? 1 : config.consensus;
+
+    const renderProposals = (proposals: Proposal[], required: number) => {
       if (proposals.length === 0) {
         proposalsList.innerHTML = '<div class="empty-state">No pending commands</div>';
         return;
@@ -223,7 +226,7 @@ const init = async (): Promise<void> => {
         <div class="proposal">
           <div class="proposal-command">$ ${p.command}</div>
           <div class="proposal-meta">
-            <span class="proposal-votes">${p.votes}/${config.consensus} votes</span>
+            <span class="proposal-votes">${p.votes}/${required} votes</span>
             <button class="vote-btn" data-id="${p.id}">+1 Vote</button>
           </div>
         </div>
@@ -241,8 +244,12 @@ const init = async (): Promise<void> => {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === "state") {
-        renderProposals(data.proposals);
+        currentRequired = data.required;
+        renderProposals(data.proposals, data.required);
         viewerCount.textContent = `${data.viewers} watching`;
+        if (votesNeeded) {
+          votesNeeded.textContent = data.auto ? `${data.required} votes (auto)` : `${data.required} votes`;
+        }
       }
       if (data.type === "executed") {
         // Flash executed command

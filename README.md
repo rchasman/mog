@@ -146,7 +146,7 @@ What you build with it is up to you:
 |------|-------------|
 | `--public` | No token required (default: token required) |
 | `-i, --interactive` | Viewers can type (default: read-only) |
-| `--consensus N` | Viewers vote on commands, N votes to execute |
+| `--consensus [N]` | Vote to execute (N=fixed, omit=auto-scale majority) |
 | `-R, --record` | Save to `~/.mog/<timestamp>.cast` |
 | `--replay <file>` | Replay recorded session |
 | `--port <PORT>` | Specific port (default: random) |
@@ -158,9 +158,16 @@ What you build with it is up to you:
 Democratic terminal. Viewers propose commands, vote to execute.
 
 ```bash
-mog --consensus 2 bash    # 2 votes needed
-mog --consensus 3 psql    # 3 votes for database access
+mog --consensus bash      # Auto-scale: majority rule
+mog --consensus 2 bash    # Fixed: always 2 votes
+mog --consensus 3 psql    # Fixed: 3 votes for database access
 ```
+
+**Auto-scaling (default):** Required votes = `ceil((viewers + 1) / 2)` — majority.
+- 1 viewer: 1 vote (just you)
+- 2 viewers: 2 votes (both agree)
+- 3 viewers: 2 votes
+- 5 viewers: 3 votes
 
 Like Twitch Plays Pokemon, but for shells.
 

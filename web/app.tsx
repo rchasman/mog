@@ -1,18 +1,13 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 
-// Session config passed from server
-declare global {
-  interface Window {
-    __MOG_CONFIG__?: {
-      terminalUrl: string;
-      publicUrl: string;
-      command: string;
-      readonly: boolean;
-      recording: boolean;
-    };
-  }
-}
+type SessionConfig = {
+  terminalUrl: string;
+  publicUrl: string;
+  command: string;
+  readonly: boolean;
+  recording: boolean;
+};
 
 type ConnectionStatus = "connecting" | "live" | "disconnected";
 
@@ -50,23 +45,41 @@ const Icons = {
 };
 
 function App() {
-  const config = window.__MOG_CONFIG__ ?? {
-    terminalUrl: `http://localhost:${new URLSearchParams(window.location.search).get("port") ?? "7000"}`,
-    publicUrl: window.location.href,
-    command: "unknown",
-    readonly: false,
-    recording: false,
-  };
-
+  const [config, setConfig] = useState<SessionConfig | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [copied, setCopied] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
 
+  // Load config from server
+  useEffect(() => {
+    fetch("/config.js")
+      .then((res) => res.text())
+      .then((text) => {
+        // Parse: window.__MOG_CONFIG__ = {...};
+        const match = text.match(/window\.__MOG_CONFIG__\s*=\s*(\{[\s\S]*\});?/);
+        if (match?.[1]) {
+          setConfig(JSON.parse(match[1]));
+        }
+      })
+      .catch(() => {
+        // Fallback for direct access
+        setConfig({
+          terminalUrl: `http://localhost:${new URLSearchParams(window.location.search).get("port") ?? "7001"}`,
+          publicUrl: window.location.href,
+          command: "unknown",
+          readonly: true,
+          recording: false,
+        });
+      });
+  }, []);
+
   // Check terminal connectivity
   useEffect(() => {
+    if (!config) return;
+
     const checkConnection = async () => {
       try {
-        const response = await fetch(config.terminalUrl, { mode: "no-cors" });
+        await fetch(config.terminalUrl, { mode: "no-cors" });
         setStatus("live");
       } catch {
         setStatus("disconnected");
@@ -76,10 +89,11 @@ function App() {
     checkConnection();
     const interval = setInterval(checkConnection, 5000);
     return () => clearInterval(interval);
-  }, [config.terminalUrl]);
+  }, [config?.terminalUrl]);
 
   // Copy URL to clipboard
   const copyUrl = useCallback(async () => {
+    if (!config) return;
     try {
       await navigator.clipboard.writeText(config.publicUrl);
       setCopied(true);
@@ -87,7 +101,7 @@ function App() {
     } catch (err) {
       console.error("Failed to copy:", err);
     }
-  }, [config.publicUrl]);
+  }, [config?.publicUrl]);
 
   // Handle iframe load
   const handleIframeLoad = useCallback(() => {
@@ -99,6 +113,18 @@ function App() {
   const handleIframeError = useCallback(() => {
     setStatus("disconnected");
   }, []);
+
+  // Loading state while fetching config
+  if (!config) {
+    return (
+      <div className="app">
+        <div className="loading-state">
+          <div className="loading-spinner" />
+          <span className="loading-text">Loading...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app">

@@ -163,10 +163,10 @@ mog --consensus 2 bash    # Fixed: always 2 votes
 mog --consensus 3 psql    # Fixed: 3 votes for database access
 ```
 
-**Auto-scaling (default):** Required votes = `ceil((viewers + 1) / 2)` — majority.
-- 1 viewer: 1 vote (just you)
-- 2 viewers: 2 votes (both agree)
+**Auto-scaling (default):** Consensus only kicks in at 3+ viewers.
+- 1-2 viewers: direct execution (no voting)
 - 3 viewers: 2 votes
+- 4 viewers: 3 votes
 - 5 viewers: 3 votes
 
 Like Twitch Plays Pokemon, but for shells.

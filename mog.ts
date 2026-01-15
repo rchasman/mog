@@ -73,11 +73,13 @@ const consensusArg = consensusIndex !== -1 ? args[consensusIndex + 1] : undefine
 const consensusMode = consensusIndex !== -1;
 const consensusFixed = consensusArg && !isNaN(parseInt(consensusArg)) ? parseInt(consensusArg) : null;
 
-// Auto-scaling: majority rule - ceil((viewers + 1) / 2)
+// Auto-scaling: majority rule, but only kicks in at 3+ viewers
 const getRequiredVotes = (viewerCount: number): number => {
   if (!consensusMode) return 0;
   if (consensusFixed !== null) return consensusFixed;
-  // Auto: need majority (more than half)
+  // < 3 viewers: direct execution (no consensus needed)
+  if (viewerCount < 3) return 1;
+  // 3+ viewers: need majority
   return Math.ceil((viewerCount + 1) / 2);
 };
 const portIndex = args.findIndex((a) => a === "--port");

@@ -41,6 +41,7 @@ Perfect for AI agent sandboxes, Claude Code demos, and remote supervision.
 \x1b[1mOptions:\x1b[0m
   --public          No token required (default: token required)
   --interactive, -i Allow viewers to type (default: read-only)
+  --consensus N     Viewers vote on commands, N votes to execute
   --record, -R      Record session to ~/.mog/<timestamp>.cast
   --port PORT       Use specific port (default: random 7000-8000)
   --no-tunnel       Skip cloudflare tunnel (localhost only)
@@ -66,6 +67,9 @@ const readonly = !interactive;
 const record = args.includes("--record") || args.includes("-R");
 const noTunnel = args.includes("--no-tunnel");
 const rawMode = args.includes("--raw");
+const consensusIndex = args.findIndex((a) => a === "--consensus");
+const consensusArg = consensusIndex !== -1 ? args[consensusIndex + 1] : undefined;
+const consensus = consensusArg ? parseInt(consensusArg) : 0;
 const portIndex = args.findIndex((a) => a === "--port");
 const portArg = portIndex !== -1 ? args[portIndex + 1] : undefined;
 const port = portArg ? parseInt(portArg) : 7000 + Math.floor(Math.random() * 1000);
@@ -97,6 +101,7 @@ const flagsToRemove = [
   "--public",
   "--interactive",
   "-i",
+  "--consensus",
   "--record",
   "-R",
   "--no-tunnel",
@@ -108,7 +113,8 @@ const cmd = args.filter(
   (a, i) =>
     !flagsToRemove.includes(a) &&
     (portIndex === -1 || i !== portIndex + 1) &&
-    (replayIndex === -1 || i !== replayIndex + 1)
+    (replayIndex === -1 || i !== replayIndex + 1) &&
+    (consensusIndex === -1 || i !== consensusIndex + 1)
 );
 
 if (cmd.length === 0) {
@@ -161,9 +167,48 @@ const sessionConfig = {
   terminalUrl: `http://localhost:${ttydPort}`,
   publicUrl,
   command: cmd.join(" "),
-  readonly,
+  readonly: consensus > 0 ? true : readonly, // Consensus mode forces read-only display
   recording: record,
   token,
+  consensus,
+};
+
+// Consensus mode state
+type Proposal = { id: string; command: string; votes: Set<string>; proposer: string };
+const proposals: Map<string, Proposal> = new Map();
+const viewers: Set<unknown> = new Set();
+
+const broadcastState = () => {
+  const state = {
+    type: "state",
+    proposals: [...proposals.values()].map((p) => ({
+      id: p.id,
+      command: p.command,
+      votes: p.votes.size,
+      proposer: p.proposer,
+    })),
+    viewers: viewers.size,
+    consensus,
+  };
+  const msg = JSON.stringify(state);
+  viewers.forEach((ws) => {
+    try { (ws as { send: (m: string) => void }).send(msg); } catch {}
+  });
+};
+
+const executeCommand = async (command: string) => {
+  // Connect to ttyd WebSocket and send the command
+  const ws = new WebSocket(`ws://localhost:${ttydPort}/ws`);
+  ws.onopen = () => {
+    // ttyd protocol: first byte is message type, 0 = input
+    const encoder = new TextEncoder();
+    const input = encoder.encode(command + "\n");
+    const msg = new Uint8Array(input.length + 1);
+    msg[0] = 0; // input type
+    msg.set(input, 1);
+    ws.send(msg);
+    setTimeout(() => ws.close(), 100);
+  };
 };
 
 // Start web UI server (unless raw mode)
@@ -171,7 +216,7 @@ let server: ReturnType<typeof Bun.serve> | null = null;
 if (!rawMode) {
   server = Bun.serve({
     port,
-    async fetch(req) {
+    async fetch(req, server) {
       const url = new URL(req.url);
 
       // Token check
@@ -180,6 +225,14 @@ if (!rawMode) {
         if (reqToken !== token) {
           return new Response("Access denied. Token required.", { status: 403 });
         }
+      }
+
+      // WebSocket upgrade for consensus mode
+      if (url.pathname === "/ws" && consensus > 0) {
+        const viewerId = crypto.randomUUID().slice(0, 8);
+        const upgraded = server.upgrade(req, { data: { viewerId } });
+        if (upgraded) return undefined;
+        return new Response("WebSocket upgrade failed", { status: 400 });
       }
 
       // Routes
@@ -200,6 +253,52 @@ if (!rawMode) {
       }
 
       return new Response("Not Found", { status: 404 });
+    },
+    websocket: {
+      open(ws) {
+        viewers.add(ws);
+        broadcastState();
+      },
+      message(ws, message) {
+        if (consensus === 0) return;
+
+        try {
+          const data = JSON.parse(String(message));
+          const viewerId = (ws.data as { viewerId: string }).viewerId;
+
+          if (data.type === "propose") {
+            const id = crypto.randomUUID().slice(0, 8);
+            proposals.set(id, {
+              id,
+              command: data.command,
+              votes: new Set([viewerId]), // Proposer auto-votes
+              proposer: viewerId,
+            });
+            broadcastState();
+          }
+
+          if (data.type === "vote") {
+            const proposal = proposals.get(data.id);
+            if (proposal) {
+              proposal.votes.add(viewerId);
+
+              // Check consensus
+              if (proposal.votes.size >= consensus) {
+                executeCommand(proposal.command);
+                proposals.delete(data.id);
+                // Broadcast execution
+                const msg = JSON.stringify({ type: "executed", command: proposal.command });
+                viewers.forEach((v) => { try { (v as { send: (m: string) => void }).send(msg); } catch {} });
+              }
+              broadcastState();
+            }
+          }
+        } catch {}
+      },
+      close(ws) {
+        viewers.delete(ws);
+        broadcastState();
+      },
     },
   });
 }
@@ -253,6 +352,7 @@ console.log();
 console.log(`\x1b[90mSharing:\x1b[0m ${cmd.join(" ")}`);
 if (token) console.log(`\x1b[90mAccess:\x1b[0m token required`);
 if (isPublic) console.log(`\x1b[90mAccess:\x1b[0m public ${interactive ? "(interactive)" : "(read-only)"}`);
+if (consensus > 0) console.log(`\x1b[90mConsensus:\x1b[0m ${consensus} votes required to execute`);
 if (recordFile) console.log(`\x1b[90mRecording:\x1b[0m ${recordFile}`);
 console.log(`\x1b[90mPress Ctrl+C to stop\x1b[0m`);
 console.log();

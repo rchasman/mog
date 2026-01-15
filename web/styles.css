@@ -363,39 +363,6 @@ body {
   max-width: 320px;
 }
 
-/* Footer */
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-2) var(--space-4);
-  background: var(--bg-raised);
-  border-top: 1px solid var(--border-subtle);
-  flex-shrink: 0;
-}
-
-.footer-left {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.footer-text {
-  color: var(--text-tertiary);
-  font-size: 11px;
-}
-
-.footer-link {
-  color: var(--text-secondary);
-  font-size: 11px;
-  text-decoration: none;
-  transition: color 0.15s ease;
-}
-
-.footer-link:hover {
-  color: var(--accent-blue);
-}
-
 /* Mobile */
 @media (max-width: 640px) {
   .header {
@@ -414,10 +381,6 @@ body {
 
   .status-label {
     display: none;
-  }
-
-  .footer {
-    padding: var(--space-2) var(--space-3);
   }
 }
 
@@ -441,6 +404,7 @@ body {
   cursor: pointer;
   transition: all 0.15s ease;
   flex-shrink: 0;
+  text-decoration: none;
 }
 
 .icon-btn:hover {
@@ -481,4 +445,179 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-emphasis);
+}
+
+/* Main container for terminal + consensus panel */
+.main-container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Consensus Panel */
+.consensus-panel {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border-left: 1px solid var(--border-subtle);
+}
+
+.consensus-header {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.consensus-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.proposals-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3);
+}
+
+.empty-state {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  text-align: center;
+  padding: var(--space-6);
+}
+
+.proposal {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.proposal-command {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+  word-break: break-all;
+}
+
+.proposal-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.proposal-votes {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.vote-btn {
+  padding: var(--space-1) var(--space-3);
+  background: var(--accent-blue);
+  color: var(--bg-base);
+  border: none;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.vote-btn:hover {
+  opacity: 0.85;
+}
+
+.propose-form {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.propose-input {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-base);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.propose-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+}
+
+.propose-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.propose-btn {
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent-green);
+  color: var(--bg-base);
+  border: none;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.propose-btn:hover {
+  opacity: 0.85;
+}
+
+/* Executed flash notification */
+.executed-flash {
+  position: fixed;
+  bottom: var(--space-6);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--space-3) var(--space-6);
+  background: var(--accent-green);
+  color: var(--bg-base);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  animation: flash-in 0.3s ease;
+  z-index: 1000;
+}
+
+@keyframes flash-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Mobile: stack consensus panel below terminal */
+@media (max-width: 768px) {
+  .main-container {
+    flex-direction: column;
+  }
+
+  .consensus-panel {
+    width: 100%;
+    max-height: 40vh;
+    border-left: none;
+    border-top: 1px solid var(--border-subtle);
+  }
 }

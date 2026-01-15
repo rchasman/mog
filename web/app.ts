@@ -4,6 +4,15 @@ type Config = {
   command: string;
   readonly: boolean;
   recording: boolean;
+  token: string | null;
+  consensus: number;
+};
+
+type Proposal = {
+  id: string;
+  command: string;
+  votes: number;
+  proposer: string;
 };
 
 const init = async (): Promise<void> => {
@@ -20,6 +29,8 @@ const init = async (): Promise<void> => {
     command: "unknown",
     readonly: true,
     recording: false,
+    token: null,
+    consensus: 0,
   };
 
   try {
@@ -58,13 +69,18 @@ const init = async (): Promise<void> => {
           </div>
         </div>
         <div class="header-controls">
+          <a href="https://github.com/rchasman/mog" class="icon-btn" target="_blank" title="GitHub">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+            </svg>
+          </a>
           <button class="icon-btn" id="theme-toggle" title="Toggle theme">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
             </svg>
           </button>
           <button class="icon-btn" id="minimize-toggle" title="Minimize">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 15l-6-6-6 6" />
             </svg>
           </button>
@@ -83,22 +99,35 @@ const init = async (): Promise<void> => {
           <span class="status-label">Command</span>
           <span class="command">${config.command}</span>
         </div>
-        ${config.readonly ? '' : '<div class="status-item"><span class="badge badge-neutral">interactive</span></div>'}
+        ${config.readonly && !config.consensus ? '' : '<div class="status-item"><span class="badge badge-neutral">interactive</span></div>'}
         ${config.recording ? '<div class="status-item"><span class="badge badge-recording"><span class="pulse-dot"></span>recording</span></div>' : ''}
+        ${config.consensus ? `<div class="status-item"><span class="badge badge-info">${config.consensus} votes needed</span></div>` : ''}
+        ${config.consensus ? '<div class="status-item"><span class="badge badge-neutral" id="viewer-count">0 watching</span></div>' : ''}
       </div>
 
-      <div class="terminal-container">
-        <iframe
-          class="terminal-iframe"
-          src="${config.terminalUrl}"
-          title="Terminal"
-        ></iframe>
+      <div class="main-container">
+        <div class="terminal-container">
+          <iframe
+            class="terminal-iframe"
+            src="${config.terminalUrl}"
+            title="Terminal"
+          ></iframe>
+        </div>
+        ${config.consensus ? `
+        <div class="consensus-panel">
+          <div class="consensus-header">
+            <span class="consensus-title">Command Queue</span>
+          </div>
+          <div class="proposals-list" id="proposals-list">
+            <div class="empty-state">No pending commands</div>
+          </div>
+          <div class="propose-form">
+            <input type="text" id="propose-input" placeholder="Type a command..." class="propose-input" />
+            <button id="propose-btn" class="propose-btn">Propose</button>
+          </div>
+        </div>
+        ` : ''}
       </div>
-
-      <footer class="footer">
-        <span class="footer-text">A primitive for watching terminals</span>
-        <a href="https://github.com/rchasman/mog" class="footer-link" target="_blank">GitHub</a>
-      </footer>
     </div>
   `;
 
@@ -173,6 +202,71 @@ const init = async (): Promise<void> => {
          </svg>`;
     minimizeToggle.title = isMinimized ? "Expand" : "Minimize";
   });
+
+  // Consensus mode WebSocket
+  if (config.consensus > 0) {
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws${window.location.search}`;
+    const ws = new WebSocket(wsUrl);
+
+    const proposalsList = document.getElementById("proposals-list")!;
+    const proposeInput = document.getElementById("propose-input") as HTMLInputElement;
+    const proposeBtn = document.getElementById("propose-btn")!;
+    const viewerCount = document.getElementById("viewer-count")!;
+
+    const renderProposals = (proposals: Proposal[]) => {
+      if (proposals.length === 0) {
+        proposalsList.innerHTML = '<div class="empty-state">No pending commands</div>';
+        return;
+      }
+      proposalsList.innerHTML = proposals.map((p) => `
+        <div class="proposal">
+          <div class="proposal-command">$ ${p.command}</div>
+          <div class="proposal-meta">
+            <span class="proposal-votes">${p.votes}/${config.consensus} votes</span>
+            <button class="vote-btn" data-id="${p.id}">+1 Vote</button>
+          </div>
+        </div>
+      `).join("");
+
+      // Add vote handlers
+      proposalsList.querySelectorAll(".vote-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = (btn as HTMLElement).dataset.id;
+          ws.send(JSON.stringify({ type: "vote", id }));
+        });
+      });
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "state") {
+        renderProposals(data.proposals);
+        viewerCount.textContent = `${data.viewers} watching`;
+      }
+      if (data.type === "executed") {
+        // Flash executed command
+        const flash = document.createElement("div");
+        flash.className = "executed-flash";
+        flash.textContent = `Executed: ${data.command}`;
+        document.body.appendChild(flash);
+        setTimeout(() => flash.remove(), 2000);
+      }
+    };
+
+    const propose = () => {
+      const command = proposeInput.value.trim();
+      if (command) {
+        ws.send(JSON.stringify({ type: "propose", command }));
+        proposeInput.value = "";
+      }
+    };
+
+    proposeBtn.addEventListener("click", propose);
+    proposeInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") propose();
+    });
+  }
 };
 
 init();

@@ -146,11 +146,23 @@ What you build with it is up to you:
 |------|-------------|
 | `--public` | No token required (default: token required) |
 | `-i, --interactive` | Viewers can type (default: read-only) |
+| `--consensus N` | Viewers vote on commands, N votes to execute |
 | `-R, --record` | Save to `~/.mog/<timestamp>.cast` |
 | `--replay <file>` | Replay recorded session |
 | `--port <PORT>` | Specific port (default: random) |
 | `--no-tunnel` | Localhost only |
 | `--raw` | Skip web UI, raw ttyd |
+
+## Consensus Mode
+
+Democratic terminal. Viewers propose commands, vote to execute.
+
+```bash
+mog --consensus 2 bash    # 2 votes needed
+mog --consensus 3 psql    # 3 votes for database access
+```
+
+Like Twitch Plays Pokemon, but for shells.
 
 ## How It Works
 

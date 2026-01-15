@@ -285,7 +285,9 @@ if (!rawMode) {
       open(ws) {
         const viewerId = (ws.data as { viewerId: string }).viewerId;
         viewers.add(ws);
-        log("join", `${viewerId}`, `${viewers.size} watching`);
+        if (viewers.size > 1) {
+          log("join", viewerId.slice(0, 4), `${viewers.size} watching`);
+        }
         broadcastState();
       },
       message(ws, message) {
@@ -304,7 +306,7 @@ if (!rawMode) {
               proposer: viewerId,
             });
             const required = getRequiredVotes(viewers.size);
-            log("propose", data.command, `1/${required} ${viewerId}`);
+            log("propose", `$ ${data.command}`, `1/${required}`);
             broadcastState();
           }
 
@@ -313,14 +315,15 @@ if (!rawMode) {
             if (proposal) {
               proposal.votes.add(viewerId);
               const required = getRequiredVotes(viewers.size);
-              log("vote", proposal.command, `${proposal.votes.size}/${required} ${viewerId}`);
 
               if (proposal.votes.size >= required) {
-                log("exec", proposal.command);
+                log("exec", `$ ${proposal.command}`);
                 executeCommand(proposal.command);
                 proposals.delete(data.id);
                 const msg = JSON.stringify({ type: "executed", command: proposal.command });
                 viewers.forEach((v) => { try { (v as { send: (m: string) => void }).send(msg); } catch {} });
+              } else {
+                log("vote", `$ ${proposal.command}`, `${proposal.votes.size}/${required}`);
               }
               broadcastState();
             }
@@ -330,7 +333,9 @@ if (!rawMode) {
       close(ws) {
         const viewerId = (ws.data as { viewerId: string }).viewerId;
         viewers.delete(ws);
-        log("leave", `${viewerId}`, `${viewers.size} watching`);
+        if (viewers.size > 0) {
+          log("leave", viewerId.slice(0, 4), `${viewers.size} watching`);
+        }
         broadcastState();
       },
     },
@@ -389,18 +394,12 @@ const c = {
   red: "\x1b[31m",
 };
 
-// Build status badges
-const badges = [
-  interactive
-    ? `${c.yellow}●${c.reset} interactive`
-    : `${c.dim}○ read-only${c.reset}`,
-  consensusMode
-    ? `${c.magenta}●${c.reset} consensus${consensusFixed ? ` ${consensusFixed}` : ""}`
-    : `${c.dim}○ consensus${c.reset}`,
-  record
-    ? `${c.red}◉${c.reset} rec`
-    : `${c.dim}○ rec${c.reset}`,
-];
+// Build status line
+const status = [
+  interactive ? `${c.yellow}●${c.reset} interactive` : `${c.dim}○ read-only${c.reset}`,
+  consensusMode ? `${c.magenta}●${c.reset} consensus${consensusFixed ? ` ${consensusFixed}` : " auto"}` : null,
+  record ? `${c.red}◉${c.reset} rec` : null,
+].filter(Boolean);
 
 // Print output
 console.log();
@@ -408,11 +407,7 @@ console.log(`  ${c.bold}mog${c.reset} ${c.dim}›${c.reset} ${cmd.join(" ")}`);
 console.log();
 console.log(`  ${c.cyan}${shareUrl}${c.reset}`);
 console.log();
-console.log(`  ${badges.join(`  ${c.dim}│${c.reset}  `)}`);
-if (recordFile) {
-  console.log();
-  console.log(`  ${c.dim}recording → ${recordFile}${c.reset}`);
-}
+console.log(`  ${status.join(`  ${c.dim}│${c.reset}  `)}`);
 console.log();
 
 // Copy to clipboard
@@ -423,112 +418,51 @@ try {
 } catch {}
 
 console.log();
-console.log(`  ${c.dim}─────────────────────────────────────────${c.reset}`);
-console.log(`  ${c.dim}:help for commands${c.reset}`);
+console.log(`  ${c.dim}press ${c.reset}${c.yellow}i${c.reset} ${c.dim}to toggle${c.reset}`);
 console.log();
 
-// Stdin command handling for live mode toggling
-const handleCommand = (line: string) => {
-  const cmd = line.trim();
-  if (!cmd.startsWith(":")) return;
+// Stdin handler - single letter toggles
+process.stdin.setRawMode?.(true);
+process.stdin.on("data", (key) => {
+  const char = key.toString();
 
-  const parts = cmd.slice(1).split(/\s+/);
-  const command = parts[0];
-  const arg = parts[1];
-
-  switch (command) {
-    case "help":
-    case "h":
-      console.log();
-      console.log(`  ${c.dim}Commands:${c.reset}`);
-      console.log(`  ${c.dim}  :interactive    toggle interactive mode${c.reset}`);
-      console.log(`  ${c.dim}  :consensus [N]  toggle consensus (N=fixed, omit=auto)${c.reset}`);
-      console.log(`  ${c.dim}  :status         show current modes${c.reset}`);
-      console.log(`  ${c.dim}  :viewers        list connected viewers${c.reset}`);
-      console.log();
-      break;
-
-    case "interactive":
-    case "i":
-      liveInteractive = !liveInteractive;
-      sessionConfig.readonly = !liveInteractive;
-      log("mode", liveInteractive ? "interactive ON" : "interactive OFF");
-      broadcastState();
-      break;
-
-    case "consensus":
-    case "c":
-      if (arg) {
-        liveConsensusMode = true;
-        liveConsensusFixed = parseInt(arg);
-        log("mode", `consensus ${liveConsensusFixed}`);
-      } else if (liveConsensusMode) {
-        liveConsensusMode = false;
-        liveConsensusFixed = null;
-        log("mode", "consensus OFF");
-      } else {
-        liveConsensusMode = true;
-        liveConsensusFixed = null;
-        log("mode", "consensus ON (auto)");
-      }
-      sessionConfig.consensus = liveConsensusFixed ?? (liveConsensusMode ? -1 : 0);
-      broadcastState();
-      break;
-
-    case "status":
-    case "s":
-      console.log();
-      console.log(`  ${c.dim}Status:${c.reset}`);
-      console.log(`  ${c.dim}  interactive: ${liveInteractive ? "ON" : "OFF"}${c.reset}`);
-      console.log(`  ${c.dim}  consensus: ${liveConsensusMode ? (liveConsensusFixed ?? "auto") : "OFF"}${c.reset}`);
-      console.log(`  ${c.dim}  viewers: ${viewers.size}${c.reset}`);
-      console.log();
-      break;
-
-    case "viewers":
-    case "v":
-      console.log();
-      console.log(`  ${c.dim}Viewers (${viewers.size}):${c.reset}`);
-      if (viewers.size === 0) {
-        console.log(`  ${c.dim}  (none)${c.reset}`);
-      }
-      console.log();
-      break;
-
-    default:
-      console.log(`  ${c.dim}Unknown command: ${command}${c.reset}`);
+  // Ctrl+C
+  if (char === "\x03") {
+    console.log(`\n  ${c.dim}stopping...${c.reset}`);
+    cleanup();
+    process.exit(0);
   }
-};
 
-// Read stdin for commands
-const decoder = new TextDecoder();
-const stdin = Bun.stdin.stream();
-const stdinReader = stdin.getReader();
+  // i = toggle interactive
+  if (char === "i" || char === "I") {
+    liveInteractive = !liveInteractive;
+    sessionConfig.readonly = !liveInteractive;
 
-(async () => {
-  let buffer = "";
-  while (true) {
-    const { done, value } = await stdinReader.read();
-    if (done) break;
-    buffer += decoder.decode(value);
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    lines.forEach(handleCommand);
+    // Re-render status line
+    const newStatus = [
+      liveInteractive ? `${c.yellow}●${c.reset} interactive` : `${c.dim}○ read-only${c.reset}`,
+      liveConsensusMode ? `${c.magenta}●${c.reset} consensus${liveConsensusFixed ? ` ${liveConsensusFixed}` : " auto"}` : null,
+      record ? `${c.red}◉${c.reset} rec` : null,
+    ].filter(Boolean);
+
+    process.stdout.write(`\r  ${newStatus.join(`  ${c.dim}│${c.reset}  `)}                              \n`);
+    broadcastState();
   }
-})();
+});
 
 // Cleanup
 const cleanup = () => {
+  process.stdin.setRawMode?.(false);
   ttyd.kill();
   tunnel?.kill();
   server?.stop();
   if (recordFile) {
-    console.log(`\n\x1b[90mSession saved to: ${recordFile}\x1b[0m`);
+    console.log(`\n  ${c.dim}session saved → ${recordFile}${c.reset}`);
   }
 };
 
 process.on("SIGINT", () => {
-  console.log("\n\x1b[90mStopping...\x1b[0m");
+  console.log(`\n  ${c.dim}stopping...${c.reset}`);
   cleanup();
   process.exit(0);
 });

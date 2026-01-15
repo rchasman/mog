@@ -18,7 +18,6 @@
 
 import { existsSync, mkdirSync, appendFileSync } from "fs";
 import { homedir } from "os";
-import index from "./web/index.html";
 
 const args = process.argv.slice(2);
 
@@ -40,7 +39,8 @@ Perfect for AI agent sandboxes, Claude Code demos, and remote supervision.
   mog bun run dev             Share a dev server
 
 \x1b[1mOptions:\x1b[0m
-  --interactive, -i Allow viewers to type (default: read-only)
+  --public          No token required (default: token required)
+  --interactive, -i Allow viewers to type (requires --public)
   --record, -R      Record session to ~/.mog/<timestamp>.cast
   --port PORT       Use specific port (default: random 7000-8000)
   --no-tunnel       Skip cloudflare tunnel (localhost only)
@@ -60,6 +60,7 @@ Perfect for AI agent sandboxes, Claude Code demos, and remote supervision.
 }
 
 // Parse flags
+const isPublic = args.includes("--public");
 const interactive = args.includes("--interactive") || args.includes("-i");
 const readonly = !interactive;
 const record = args.includes("--record") || args.includes("-R");
@@ -69,6 +70,16 @@ const portIndex = args.findIndex((a) => a === "--port");
 const portArg = portIndex !== -1 ? args[portIndex + 1] : undefined;
 const port = portArg ? parseInt(portArg) : 7000 + Math.floor(Math.random() * 1000);
 const ttydPort = port + 1; // ttyd runs on adjacent port
+
+// Generate token (unless public)
+const token = isPublic ? null : crypto.randomUUID().slice(0, 8);
+
+// Interactive requires public (explicit danger)
+if (interactive && !isPublic) {
+  console.error("\x1b[31mError: --interactive requires --public\x1b[0m");
+  console.error("\x1b[90mThis is a safety measure. Use: mog --public -i <command>\x1b[0m");
+  process.exit(1);
+}
 
 // Handle --replay
 const replayIndex = args.findIndex((a) => a === "--replay");
@@ -90,6 +101,7 @@ if (replayIndex !== -1) {
 
 // Remove flags from command
 const flagsToRemove = [
+  "--public",
   "--interactive",
   "-i",
   "--record",
@@ -158,6 +170,7 @@ const sessionConfig = {
   command: cmd.join(" "),
   readonly,
   recording: record,
+  token,
 };
 
 // Start web UI server (unless raw mode)
@@ -165,14 +178,35 @@ let server: ReturnType<typeof Bun.serve> | null = null;
 if (!rawMode) {
   server = Bun.serve({
     port,
-    routes: {
-      "/": index,
-      // Inject session config dynamically
-      "/config.js": () =>
-        new Response(
+    async fetch(req) {
+      const url = new URL(req.url);
+
+      // Token check
+      if (token) {
+        const reqToken = url.searchParams.get("token");
+        if (reqToken !== token) {
+          return new Response("Access denied. Token required.", { status: 403 });
+        }
+      }
+
+      // Routes
+      if (url.pathname === "/" || url.pathname === "/index.html") {
+        return new Response(Bun.file(new URL("./web/index.html", import.meta.url)));
+      }
+      if (url.pathname === "/config.js") {
+        return new Response(
           `window.__MOG_CONFIG__ = ${JSON.stringify(sessionConfig)};`,
           { headers: { "Content-Type": "application/javascript" } }
-        ),
+        );
+      }
+      if (url.pathname === "/app.ts" || url.pathname === "/app.js") {
+        return new Response(Bun.file(new URL("./web/app.ts", import.meta.url)));
+      }
+      if (url.pathname === "/styles.css") {
+        return new Response(Bun.file(new URL("./web/styles.css", import.meta.url)));
+      }
+
+      return new Response("Not Found", { status: 404 });
     },
   });
 }
@@ -214,23 +248,26 @@ if (!noTunnel) {
   ]);
 }
 
+// Build shareable URL
+const shareUrl = token ? `${publicUrl}?token=${token}` : publicUrl;
+
 // Print the URL
 console.log();
-console.log(`\x1b[90m┌${"─".repeat(publicUrl.length + 4)}┐\x1b[0m`);
-console.log(`\x1b[90m│\x1b[0m  \x1b[1;36m${publicUrl}\x1b[0m  \x1b[90m│\x1b[0m`);
-console.log(`\x1b[90m└${"─".repeat(publicUrl.length + 4)}┘\x1b[0m`);
+console.log(`\x1b[90m┌${"─".repeat(shareUrl.length + 4)}┐\x1b[0m`);
+console.log(`\x1b[90m│\x1b[0m  \x1b[1;36m${shareUrl}\x1b[0m  \x1b[90m│\x1b[0m`);
+console.log(`\x1b[90m└${"─".repeat(shareUrl.length + 4)}┘\x1b[0m`);
 console.log();
 console.log(`\x1b[90mSharing:\x1b[0m ${cmd.join(" ")}`);
-if (interactive) console.log(`\x1b[90mMode:\x1b[0m interactive (viewers can type)`);
+if (token) console.log(`\x1b[90mAccess:\x1b[0m token required`);
+if (isPublic) console.log(`\x1b[90mAccess:\x1b[0m public ${interactive ? "(interactive)" : "(read-only)"}`);
 if (recordFile) console.log(`\x1b[90mRecording:\x1b[0m ${recordFile}`);
-if (!rawMode) console.log(`\x1b[90mWeb UI:\x1b[0m http://localhost:${port}`);
 console.log(`\x1b[90mPress Ctrl+C to stop\x1b[0m`);
 console.log();
 
 // Copy to clipboard (macOS)
 try {
   const pbcopy = Bun.spawn(["pbcopy"], {
-    stdin: new Response(publicUrl).body,
+    stdin: new Response(shareUrl).body,
   });
   await pbcopy.exited;
   console.log(`\x1b[32m✓ URL copied to clipboard\x1b[0m`);

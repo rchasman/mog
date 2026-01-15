@@ -5,33 +5,43 @@
 <h1 align="center">mog</h1>
 
 <p align="center">
-  <strong>A primitive for watching terminals.</strong>
+  <strong>Interactive terminal streaming.</strong>
 </p>
 
 <p align="center">
-  Stream any terminal session to a public URL in seconds.<br>
+  Share any terminal to a public URL. Watch or take control.<br>
   One command. Instant URL. No server. No account.
 </p>
 
 <p align="center">
   <a href="#install">Install</a> •
-  <a href="#usage">Usage</a> •
+  <a href="#security-model">Security</a> •
   <a href="#examples">Examples</a> •
   <a href="#how-it-works">How It Works</a>
 </p>
 
 ---
 
-## Why a Primitive?
+## Security Model
 
-mog does one thing: wrap any command in a shareable terminal.
-
-What you build with it is up to you.
-
+**Token** (default) — URL includes a token. Only people you share with can access.
 ```bash
-mog <anything>
-# → https://random-words.trycloudflare.com
+mog bash                      # → https://...?token=a1b2c3d4
 ```
+
+**Public** — No token. Anyone with the URL can view (read-only).
+```bash
+mog --public bash             # → https://...
+```
+
+**Public + Interactive** — No token. Anyone can type. Explicit danger.
+```bash
+mog --public -i bash          # → https://... (anyone can type!)
+```
+
+Token by default keeps you safe. Escalate intentionally.
+
+---
 
 ## Install
 
@@ -43,106 +53,105 @@ git clone https://github.com/rchasman/mog && cd mog && bun link
 ## Usage
 
 ```bash
-mog bash                     # Share a shell (read-only by default)
-mog -i bash                  # Allow viewers to type
-mog --record bun run dev     # Record for replay
+mog <command>                 # Watch mode (read-only)
+mog -i <command>              # Interactive mode (viewers can type)
 ```
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  https://random-words-here.trycloudflare.com                 │
 └──────────────────────────────────────────────────────────────┘
-Sharing: claude
+Sharing: bash
+Mode: interactive (viewers can type)
 Press Ctrl+C to stop
 
 ✓ URL copied to clipboard
 ```
 
+---
+
 ## Examples
 
-mog is a primitive. Compose it with anything.
+### 🔴 Watch Mode — Safe Sharing
 
-### Watch AI Agents Work
+Perfect for demos, monitoring, and showing work.
+
 ```bash
-mog claude                              # Claude Code session
+# AI Agents
+mog claude                              # Watch Claude Code work
 mog aider                               # Aider coding agent
-mog goose session start                 # Block's Goose agent
-mog agentfs exec sandbox.db bash        # Agent in isolated filesystem
-```
+mog agentfs exec sandbox.db bash        # Agent in sandboxed filesystem
 
-### Live Dashboards
-```bash
+# Live Dashboards
 mog htop                                # System monitor
-mog btop                                # Pretty resource monitor
-mog watch -n1 kubectl get pods          # Kubernetes dashboard
-mog tail -f /var/log/syslog             # Live log stream
-```
+mog watch -n1 kubectl get pods          # Kubernetes status
+mog tail -f /var/log/app.log            # Live logs
 
-### Collaborative Debugging
-```bash
-mog ssh prod-server                     # Share SSH session
-mog docker exec -it api sh              # Inside a container
-mog kubectl exec -it pod -- sh          # Inside a pod
-mog gdb ./crash-dump                    # Debug session
-```
-
-### Build & Deploy Visibility
-```bash
+# Build Visibility
 mog npm run build                       # Watch builds
 mog docker build -t app .               # Container builds
 mog terraform apply                     # Infrastructure changes
-mog ansible-playbook deploy.yml         # Deployments
 ```
 
-### Database Operations
+### 🟢 Interactive Mode — Collaborative Control
+
+Share control with anyone who has the URL.
+
 ```bash
-mog psql -d production                  # Postgres session
-mog mongosh                             # MongoDB shell
-mog redis-cli monitor                   # Redis commands live
-mog sqlite3 app.db                      # SQLite explorer
+# Pair Programming
+mog -i vim main.rs                      # Co-edit in vim
+mog -i nvim                             # Neovim session
+mog -i emacs -nw                        # Emacs collaboration
+
+# Remote Assistance
+mog -i bash                             # Hand over your shell
+mog -i ssh prod-server                  # Shared SSH session
+mog -i docker exec -it api sh           # Inside a container together
+
+# Teaching & Onboarding
+mog -i psql -d mydb                     # Walk through SQL together
+mog -i git rebase -i HEAD~5             # Teach git interactively
+mog -i kubectl debug pod -- sh          # Debug together
+
+# Mob Programming
+mog -i bash                             # Whole team, one terminal
+# Everyone types. Everyone sees. True mob programming.
 ```
 
-### Git & Code Review
+### 🎬 Record & Replay
+
 ```bash
-mog tig                                 # Git history browser
-mog lazygit                             # Git TUI
-mog git log --oneline --graph           # Commit graph
-mog diff-so-fancy < changes.diff        # Pretty diffs
+mog --record claude                     # Record an agent session
+mog --replay ~/.mog/1234567890.cast     # Play it back later
 ```
 
-### Pair Programming
-```bash
-mog vim                                 # Share vim session
-mog nvim                                # Neovim
-mog emacs -nw                           # Emacs in terminal
-mog micro                               # Micro editor
+---
+
+## The Primitive
+
+mog does one thing: wrap any command in a shareable, optionally interactive terminal.
+
+```
+mog <command>        → watch
+mog -i <command>     → interact
 ```
 
-### Network & Security
-```bash
-mog tcpdump -i any                      # Packet capture
-mog nmap -sV target                     # Port scanning
-mog wireshark -i eth0 -k                # Traffic analysis
-mog mtr google.com                      # Network diagnostics
-```
+What you build with it is up to you:
+- **Agent observability** — Watch AI work in sandboxes
+- **Live support** — Hand control to someone who can help
+- **Pair/mob programming** — Real-time collaboration
+- **Demos** — Safe read-only sharing
+- **Teaching** — Interactive walkthroughs
 
-### Creative Uses
-```bash
-mog cmatrix                             # Matrix rain
-mog asciiquarium                        # Fish tank
-mog sl                                  # Steam locomotive
-mog hollywood                           # Hacker movie mode
-mog --record bash                       # Record & replay later
-```
-
-The pattern: `mog <command>` → instant public URL.
+---
 
 ## Options
 
 | Flag | Description |
 |------|-------------|
-| `--interactive, -i` | Allow viewers to type (default: read-only) |
-| `--record, -R` | Save to `~/.mog/<timestamp>.cast` |
+| `--public` | No token required (default: token required) |
+| `-i, --interactive` | Viewers can type (requires `--public`) |
+| `-R, --record` | Save to `~/.mog/<timestamp>.cast` |
 | `--replay <file>` | Replay recorded session |
 | `--port <PORT>` | Specific port (default: random) |
 | `--no-tunnel` | Localhost only |
@@ -158,7 +167,7 @@ The pattern: `mog <command>` → instant public URL.
                            │
                            ▼
                     ┌──────────────┐
-                    │   Viewers    │
+                    │   Viewers    │◀─── Watch or type (if -i)
                     │  (browser)   │
                     └──────────────┘
 ```

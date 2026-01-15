@@ -24,22 +24,17 @@
 
 ## Security Model
 
-**Token** (default) — URL includes a token. Only people you share with can access.
+**Token** (default) — Only people you share the URL with can access.
 ```bash
 mog bash                      # → https://...?token=a1b2c3d4
+mog -i bash                   # → same, but interactive
 ```
 
-**Public** — No token. Anyone with the URL can view (read-only).
+**Public** — No token. Anyone who finds the URL can access.
 ```bash
 mog --public bash             # → https://...
+mog --public -i bash          # → same, but interactive
 ```
-
-**Public + Interactive** — No token. Anyone can type. Explicit danger.
-```bash
-mog --public -i bash          # → https://... (anyone can type!)
-```
-
-Token by default keeps you safe. Escalate intentionally.
 
 ---
 
@@ -150,7 +145,7 @@ What you build with it is up to you:
 | Flag | Description |
 |------|-------------|
 | `--public` | No token required (default: token required) |
-| `-i, --interactive` | Viewers can type (requires `--public`) |
+| `-i, --interactive` | Viewers can type (default: read-only) |
 | `-R, --record` | Save to `~/.mog/<timestamp>.cast` |
 | `--replay <file>` | Replay recorded session |
 | `--port <PORT>` | Specific port (default: random) |

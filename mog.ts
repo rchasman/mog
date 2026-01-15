@@ -40,7 +40,7 @@ Perfect for AI agent sandboxes, Claude Code demos, and remote supervision.
 
 \x1b[1mOptions:\x1b[0m
   --public          No token required (default: token required)
-  --interactive, -i Allow viewers to type (requires --public)
+  --interactive, -i Allow viewers to type (default: read-only)
   --record, -R      Record session to ~/.mog/<timestamp>.cast
   --port PORT       Use specific port (default: random 7000-8000)
   --no-tunnel       Skip cloudflare tunnel (localhost only)
@@ -73,13 +73,6 @@ const ttydPort = port + 1; // ttyd runs on adjacent port
 
 // Generate token (unless public)
 const token = isPublic ? null : crypto.randomUUID().slice(0, 8);
-
-// Interactive requires public (explicit danger)
-if (interactive && !isPublic) {
-  console.error("\x1b[31mError: --interactive requires --public\x1b[0m");
-  console.error("\x1b[90mThis is a safety measure. Use: mog --public -i <command>\x1b[0m");
-  process.exit(1);
-}
 
 // Handle --replay
 const replayIndex = args.findIndex((a) => a === "--replay");

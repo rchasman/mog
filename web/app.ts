@@ -4,7 +4,6 @@ type Config = {
   command: string;
   readonly: boolean;
   recording: boolean;
-  token: string | null;
   consensus: number;
 };
 
@@ -29,7 +28,6 @@ const init = async (): Promise<void> => {
     command: "unknown",
     readonly: true,
     recording: false,
-    token: null,
     consensus: 0,
   };
 

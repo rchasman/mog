@@ -39,7 +39,6 @@ Perfect for AI agent sandboxes, Claude Code demos, and remote supervision.
   mog bun run dev             Share a dev server
 
 \x1b[1mOptions:\x1b[0m
-  --public          No token required (default: token required)
   --interactive, -i Allow viewers to type (default: read-only)
   --consensus [N]   Viewers vote on commands (N=fixed, omit=auto-scale)
   --record, -R      Record session to ~/.mog/<timestamp>.cast
@@ -61,7 +60,6 @@ Perfect for AI agent sandboxes, Claude Code demos, and remote supervision.
 }
 
 // Parse flags
-const isPublic = args.includes("--public");
 const interactive = args.includes("--interactive") || args.includes("-i");
 const readonly = !interactive;
 const record = args.includes("--record") || args.includes("-R");
@@ -87,9 +85,6 @@ const portArg = portIndex !== -1 ? args[portIndex + 1] : undefined;
 const port = portArg ? parseInt(portArg) : 7000 + Math.floor(Math.random() * 1000);
 const ttydPort = port + 1; // ttyd runs on adjacent port
 
-// Generate token (unless public)
-const token = isPublic ? null : crypto.randomUUID().slice(0, 8);
-
 // Handle --replay
 const replayIndex = args.findIndex((a) => a === "--replay");
 if (replayIndex !== -1) {
@@ -110,7 +105,6 @@ if (replayIndex !== -1) {
 
 // Remove flags from command
 const flagsToRemove = [
-  "--public",
   "--interactive",
   "-i",
   "--consensus",
@@ -181,7 +175,6 @@ const sessionConfig = {
   command: cmd.join(" "),
   readonly: consensusMode ? true : readonly, // Consensus mode forces read-only display
   recording: record,
-  token,
   consensus: consensusFixed ?? (consensusMode ? -1 : 0), // -1 = auto-scaling
 };
 
@@ -189,6 +182,26 @@ const sessionConfig = {
 type Proposal = { id: string; command: string; votes: Set<string>; proposer: string };
 const proposals: Map<string, Proposal> = new Map();
 const viewers: Set<unknown> = new Set();
+
+// Mutable state for live toggling
+let liveInteractive = interactive;
+let liveConsensusMode = consensusMode;
+let liveConsensusFixed = consensusFixed;
+
+// Event log helper
+const logColors: Record<string, string> = {
+  join: "\x1b[32m",    // green
+  leave: "\x1b[31m",   // red
+  propose: "\x1b[33m", // yellow
+  vote: "\x1b[36m",    // cyan
+  exec: "\x1b[32m",    // green
+  mode: "\x1b[35m",    // magenta
+};
+const log = (type: string, main: string, detail?: string) => {
+  const color = logColors[type] || "\x1b[90m";
+  const d = detail ? ` \x1b[90m${detail}\x1b[0m` : "";
+  console.log(`  \x1b[90m›\x1b[0m ${color}${type}\x1b[0m ${main}${d}`);
+};
 
 const broadcastState = () => {
   const required = getRequiredVotes(viewers.size);
@@ -201,8 +214,8 @@ const broadcastState = () => {
       proposer: p.proposer,
     })),
     viewers: viewers.size,
-    required, // Dynamic based on viewer count
-    auto: consensusFixed === null && consensusMode, // Is auto-scaling?
+    required,
+    auto: liveConsensusFixed === null && liveConsensusMode,
   };
   const msg = JSON.stringify(state);
   viewers.forEach((ws) => {
@@ -233,16 +246,8 @@ if (!rawMode) {
     async fetch(req, server) {
       const url = new URL(req.url);
 
-      // Token check
-      if (token) {
-        const reqToken = url.searchParams.get("token");
-        if (reqToken !== token) {
-          return new Response("Access denied. Token required.", { status: 403 });
-        }
-      }
-
-      // WebSocket upgrade for consensus mode
-      if (url.pathname === "/ws" && consensusMode) {
+      // WebSocket upgrade (always available for live mode updates)
+      if (url.pathname === "/ws") {
         const viewerId = crypto.randomUUID().slice(0, 8);
         const upgraded = server.upgrade(req, { data: { viewerId } });
         if (upgraded) return undefined;
@@ -260,7 +265,15 @@ if (!rawMode) {
         );
       }
       if (url.pathname === "/app.ts" || url.pathname === "/app.js") {
-        return new Response(Bun.file(new URL("./web/app.ts", import.meta.url)));
+        const filePath = new URL("./web/app.ts", import.meta.url).pathname;
+        const transpiled = await Bun.build({
+          entrypoints: [filePath],
+          target: "browser",
+        });
+        const [output] = transpiled.outputs;
+        return new Response(output, {
+          headers: { "Content-Type": "application/javascript" },
+        });
       }
       if (url.pathname === "/styles.css") {
         return new Response(Bun.file(new URL("./web/styles.css", import.meta.url)));
@@ -272,11 +285,11 @@ if (!rawMode) {
       open(ws) {
         const viewerId = (ws.data as { viewerId: string }).viewerId;
         viewers.add(ws);
-        console.log(`\x1b[90m→\x1b[0m \x1b[32m+viewer\x1b[0m ${viewerId} \x1b[90m(${viewers.size} watching)\x1b[0m`);
+        log("join", `${viewerId}`, `${viewers.size} watching`);
         broadcastState();
       },
       message(ws, message) {
-        if (!consensusMode) return;
+        if (!liveConsensusMode) return;
 
         try {
           const data = JSON.parse(String(message));
@@ -287,11 +300,11 @@ if (!rawMode) {
             proposals.set(id, {
               id,
               command: data.command,
-              votes: new Set([viewerId]), // Proposer auto-votes
+              votes: new Set([viewerId]),
               proposer: viewerId,
             });
             const required = getRequiredVotes(viewers.size);
-            console.log(`\x1b[90m→\x1b[0m \x1b[33mpropose\x1b[0m \x1b[90m$\x1b[0m ${data.command} \x1b[90m(1/${required} by ${viewerId})\x1b[0m`);
+            log("propose", data.command, `1/${required} ${viewerId}`);
             broadcastState();
           }
 
@@ -300,14 +313,12 @@ if (!rawMode) {
             if (proposal) {
               proposal.votes.add(viewerId);
               const required = getRequiredVotes(viewers.size);
-              console.log(`\x1b[90m→\x1b[0m \x1b[36mvote\x1b[0m \x1b[90m$\x1b[0m ${proposal.command} \x1b[90m(${proposal.votes.size}/${required} by ${viewerId})\x1b[0m`);
+              log("vote", proposal.command, `${proposal.votes.size}/${required} ${viewerId}`);
 
-              // Check consensus (dynamic based on viewer count)
               if (proposal.votes.size >= required) {
-                console.log(`\x1b[90m→\x1b[0m \x1b[32mexec\x1b[0m \x1b[90m$\x1b[0m ${proposal.command}`);
+                log("exec", proposal.command);
                 executeCommand(proposal.command);
                 proposals.delete(data.id);
-                // Broadcast execution
                 const msg = JSON.stringify({ type: "executed", command: proposal.command });
                 viewers.forEach((v) => { try { (v as { send: (m: string) => void }).send(msg); } catch {} });
               }
@@ -319,7 +330,7 @@ if (!rawMode) {
       close(ws) {
         const viewerId = (ws.data as { viewerId: string }).viewerId;
         viewers.delete(ws);
-        console.log(`\x1b[90m→\x1b[0m \x1b[31m-viewer\x1b[0m ${viewerId} \x1b[90m(${viewers.size} watching)\x1b[0m`);
+        log("leave", `${viewerId}`, `${viewers.size} watching`);
         broadcastState();
       },
     },
@@ -364,48 +375,147 @@ if (!noTunnel) {
 }
 
 // Build shareable URL
-const shareUrl = token ? `${publicUrl}?token=${token}` : publicUrl;
+const shareUrl = publicUrl;
 
-// Visual toggle display
-const on = (label: string) => `\x1b[32m●\x1b[0m ${label}`;
-const off = (label: string) => `\x1b[90m○ ${label}\x1b[0m`;
+// Colors and glyphs for output
+const c = {
+  reset: "\x1b[0m",
+  dim: "\x1b[90m",
+  bold: "\x1b[1m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  cyan: "\x1b[36m",
+  magenta: "\x1b[35m",
+  red: "\x1b[31m",
+};
 
-const toggles = [
-  token ? on("token") : off("token"),
-  isPublic ? on("public") : off("public"),
-  interactive ? on("interactive") : off("interactive"),
+// Build status badges
+const badges = [
+  interactive
+    ? `${c.yellow}●${c.reset} interactive`
+    : `${c.dim}○ read-only${c.reset}`,
   consensusMode
-    ? on(`consensus${consensusFixed !== null ? ` (${consensusFixed})` : " (auto)"}`)
-    : off("consensus"),
-  record ? on("recording") : off("recording"),
+    ? `${c.magenta}●${c.reset} consensus${consensusFixed ? ` ${consensusFixed}` : ""}`
+    : `${c.dim}○ consensus${c.reset}`,
+  record
+    ? `${c.red}◉${c.reset} rec`
+    : `${c.dim}○ rec${c.reset}`,
 ];
 
-// Print the URL
+// Print output
 console.log();
-console.log(`\x1b[90m┌${"─".repeat(shareUrl.length + 4)}┐\x1b[0m`);
-console.log(`\x1b[90m│\x1b[0m  \x1b[1;36m${shareUrl}\x1b[0m  \x1b[90m│\x1b[0m`);
-console.log(`\x1b[90m└${"─".repeat(shareUrl.length + 4)}┘\x1b[0m`);
+console.log(`  ${c.bold}mog${c.reset} ${c.dim}›${c.reset} ${cmd.join(" ")}`);
 console.log();
-console.log(`\x1b[90m$\x1b[0m ${cmd.join(" ")}`);
+console.log(`  ${c.cyan}${shareUrl}${c.reset}`);
 console.log();
-console.log(toggles.join("  "));
-console.log();
-if (recordFile) console.log(`\x1b[90mRecording to:\x1b[0m ${recordFile}`);
-console.log(`\x1b[90mCtrl+C to stop\x1b[0m`);
-console.log();
-
-// Copy to clipboard (macOS)
-try {
-  const pbcopy = Bun.spawn(["pbcopy"], {
-    stdin: new Response(shareUrl).body,
-  });
-  await pbcopy.exited;
-  console.log(`\x1b[32m✓ URL copied to clipboard\x1b[0m`);
-} catch {
-  // Ignore clipboard errors
+console.log(`  ${badges.join(`  ${c.dim}│${c.reset}  `)}`);
+if (recordFile) {
+  console.log();
+  console.log(`  ${c.dim}recording → ${recordFile}${c.reset}`);
 }
+console.log();
+
+// Copy to clipboard
+try {
+  const pbcopy = Bun.spawn(["pbcopy"], { stdin: new Response(shareUrl).body });
+  await pbcopy.exited;
+  console.log(`  ${c.green}✓${c.reset} ${c.dim}copied${c.reset}`);
+} catch {}
 
 console.log();
+console.log(`  ${c.dim}─────────────────────────────────────────${c.reset}`);
+console.log(`  ${c.dim}:help for commands${c.reset}`);
+console.log();
+
+// Stdin command handling for live mode toggling
+const handleCommand = (line: string) => {
+  const cmd = line.trim();
+  if (!cmd.startsWith(":")) return;
+
+  const parts = cmd.slice(1).split(/\s+/);
+  const command = parts[0];
+  const arg = parts[1];
+
+  switch (command) {
+    case "help":
+    case "h":
+      console.log();
+      console.log(`  ${c.dim}Commands:${c.reset}`);
+      console.log(`  ${c.dim}  :interactive    toggle interactive mode${c.reset}`);
+      console.log(`  ${c.dim}  :consensus [N]  toggle consensus (N=fixed, omit=auto)${c.reset}`);
+      console.log(`  ${c.dim}  :status         show current modes${c.reset}`);
+      console.log(`  ${c.dim}  :viewers        list connected viewers${c.reset}`);
+      console.log();
+      break;
+
+    case "interactive":
+    case "i":
+      liveInteractive = !liveInteractive;
+      sessionConfig.readonly = !liveInteractive;
+      log("mode", liveInteractive ? "interactive ON" : "interactive OFF");
+      broadcastState();
+      break;
+
+    case "consensus":
+    case "c":
+      if (arg) {
+        liveConsensusMode = true;
+        liveConsensusFixed = parseInt(arg);
+        log("mode", `consensus ${liveConsensusFixed}`);
+      } else if (liveConsensusMode) {
+        liveConsensusMode = false;
+        liveConsensusFixed = null;
+        log("mode", "consensus OFF");
+      } else {
+        liveConsensusMode = true;
+        liveConsensusFixed = null;
+        log("mode", "consensus ON (auto)");
+      }
+      sessionConfig.consensus = liveConsensusFixed ?? (liveConsensusMode ? -1 : 0);
+      broadcastState();
+      break;
+
+    case "status":
+    case "s":
+      console.log();
+      console.log(`  ${c.dim}Status:${c.reset}`);
+      console.log(`  ${c.dim}  interactive: ${liveInteractive ? "ON" : "OFF"}${c.reset}`);
+      console.log(`  ${c.dim}  consensus: ${liveConsensusMode ? (liveConsensusFixed ?? "auto") : "OFF"}${c.reset}`);
+      console.log(`  ${c.dim}  viewers: ${viewers.size}${c.reset}`);
+      console.log();
+      break;
+
+    case "viewers":
+    case "v":
+      console.log();
+      console.log(`  ${c.dim}Viewers (${viewers.size}):${c.reset}`);
+      if (viewers.size === 0) {
+        console.log(`  ${c.dim}  (none)${c.reset}`);
+      }
+      console.log();
+      break;
+
+    default:
+      console.log(`  ${c.dim}Unknown command: ${command}${c.reset}`);
+  }
+};
+
+// Read stdin for commands
+const decoder = new TextDecoder();
+const stdin = Bun.stdin.stream();
+const stdinReader = stdin.getReader();
+
+(async () => {
+  let buffer = "";
+  while (true) {
+    const { done, value } = await stdinReader.read();
+    if (done) break;
+    buffer += decoder.decode(value);
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    lines.forEach(handleCommand);
+  }
+})();
 
 // Cleanup
 const cleanup = () => {

@@ -15,26 +15,10 @@
 
 <p align="center">
   <a href="#install">Install</a> •
-  <a href="#security-model">Security</a> •
+  <a href="#usage">Usage</a> •
   <a href="#examples">Examples</a> •
-  <a href="#how-it-works">How It Works</a>
+  <a href="#consensus-mode">Consensus Mode</a>
 </p>
-
----
-
-## Security Model
-
-**Token** (default) — Only people you share the URL with can access.
-```bash
-mog bash                      # → https://...?token=a1b2c3d4
-mog -i bash                   # → same, but interactive
-```
-
-**Public** — No token. Anyone who finds the URL can access.
-```bash
-mog --public bash             # → https://...
-mog --public -i bash          # → same, but interactive
-```
 
 ---
 
@@ -144,7 +128,6 @@ What you build with it is up to you:
 
 | Flag | Description |
 |------|-------------|
-| `--public` | No token required (default: token required) |
 | `-i, --interactive` | Viewers can type (default: read-only) |
 | `--consensus [N]` | Vote to execute (N=fixed, omit=auto-scale majority) |
 | `-R, --record` | Save to `~/.mog/<timestamp>.cast` |

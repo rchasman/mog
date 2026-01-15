@@ -270,7 +270,9 @@ if (!rawMode) {
     },
     websocket: {
       open(ws) {
+        const viewerId = (ws.data as { viewerId: string }).viewerId;
         viewers.add(ws);
+        console.log(`\x1b[90m→\x1b[0m \x1b[32m+viewer\x1b[0m ${viewerId} \x1b[90m(${viewers.size} watching)\x1b[0m`);
         broadcastState();
       },
       message(ws, message) {
@@ -288,6 +290,8 @@ if (!rawMode) {
               votes: new Set([viewerId]), // Proposer auto-votes
               proposer: viewerId,
             });
+            const required = getRequiredVotes(viewers.size);
+            console.log(`\x1b[90m→\x1b[0m \x1b[33mpropose\x1b[0m \x1b[90m$\x1b[0m ${data.command} \x1b[90m(1/${required} by ${viewerId})\x1b[0m`);
             broadcastState();
           }
 
@@ -295,10 +299,12 @@ if (!rawMode) {
             const proposal = proposals.get(data.id);
             if (proposal) {
               proposal.votes.add(viewerId);
+              const required = getRequiredVotes(viewers.size);
+              console.log(`\x1b[90m→\x1b[0m \x1b[36mvote\x1b[0m \x1b[90m$\x1b[0m ${proposal.command} \x1b[90m(${proposal.votes.size}/${required} by ${viewerId})\x1b[0m`);
 
               // Check consensus (dynamic based on viewer count)
-              const required = getRequiredVotes(viewers.size);
               if (proposal.votes.size >= required) {
+                console.log(`\x1b[90m→\x1b[0m \x1b[32mexec\x1b[0m \x1b[90m$\x1b[0m ${proposal.command}`);
                 executeCommand(proposal.command);
                 proposals.delete(data.id);
                 // Broadcast execution
@@ -311,7 +317,9 @@ if (!rawMode) {
         } catch {}
       },
       close(ws) {
+        const viewerId = (ws.data as { viewerId: string }).viewerId;
         viewers.delete(ws);
+        console.log(`\x1b[90m→\x1b[0m \x1b[31m-viewer\x1b[0m ${viewerId} \x1b[90m(${viewers.size} watching)\x1b[0m`);
         broadcastState();
       },
     },

@@ -183,11 +183,6 @@ type Proposal = { id: string; command: string; votes: Set<string>; proposer: str
 const proposals: Map<string, Proposal> = new Map();
 const viewers: Set<unknown> = new Set();
 
-// Mutable state for live toggling
-let liveInteractive = interactive;
-let liveConsensusMode = consensusMode;
-let liveConsensusFixed = consensusFixed;
-
 // Event log helper
 const logColors: Record<string, string> = {
   join: "\x1b[32m",    // green
@@ -215,7 +210,7 @@ const broadcastState = () => {
     })),
     viewers: viewers.size,
     required,
-    auto: liveConsensusFixed === null && liveConsensusMode,
+    auto: consensusFixed === null && consensusMode,
   };
   const msg = JSON.stringify(state);
   viewers.forEach((ws) => {
@@ -285,13 +280,16 @@ if (!rawMode) {
       open(ws) {
         const viewerId = (ws.data as { viewerId: string }).viewerId;
         viewers.add(ws);
-        if (viewers.size > 1) {
+        // Only log when viewers > 1 (someone actually joined)
+        if (viewers.size === 2) {
+          log("join", `${viewers.size} watching`);
+        } else if (viewers.size > 2) {
           log("join", viewerId.slice(0, 4), `${viewers.size} watching`);
         }
         broadcastState();
       },
       message(ws, message) {
-        if (!liveConsensusMode) return;
+        if (!consensusMode) return;
 
         try {
           const data = JSON.parse(String(message));
@@ -333,7 +331,8 @@ if (!rawMode) {
       close(ws) {
         const viewerId = (ws.data as { viewerId: string }).viewerId;
         viewers.delete(ws);
-        if (viewers.size > 0) {
+        // Only log if still have viewers
+        if (viewers.size >= 1) {
           log("leave", viewerId.slice(0, 4), `${viewers.size} watching`);
         }
         broadcastState();
@@ -394,12 +393,12 @@ const c = {
   red: "\x1b[31m",
 };
 
-// Build status line
+// Build status line - show all toggles
 const status = [
   interactive ? `${c.yellow}●${c.reset} interactive` : `${c.dim}○ read-only${c.reset}`,
-  consensusMode ? `${c.magenta}●${c.reset} consensus${consensusFixed ? ` ${consensusFixed}` : " auto"}` : null,
-  record ? `${c.red}◉${c.reset} rec` : null,
-].filter(Boolean);
+  consensusMode ? `${c.magenta}●${c.reset} consensus${consensusFixed ? ` ${consensusFixed}` : " auto"}` : `${c.dim}○ consensus${c.reset}`,
+  record ? `${c.red}◉${c.reset} rec` : `${c.dim}○ rec${c.reset}`,
+];
 
 // Print output
 console.log();
@@ -407,7 +406,7 @@ console.log(`\x1b[90m┌${"─".repeat(shareUrl.length + 4)}┐\x1b[0m`);
 console.log(`\x1b[90m│\x1b[0m  \x1b[1;36m${shareUrl}\x1b[0m  \x1b[90m│\x1b[0m`);
 console.log(`\x1b[90m└${"─".repeat(shareUrl.length + 4)}┘\x1b[0m`);
 console.log();
-console.log(`  ${c.dim}$\x1b[0m ${cmd.join(" ")}`);
+console.log(`  ${c.dim}$${c.reset} ${cmd.join(" ")}`);
 console.log();
 console.log(`  ${status.join(`  ${c.dim}│${c.reset}  `)}`);
 console.log();
@@ -420,41 +419,11 @@ try {
 } catch {}
 
 console.log();
-console.log(`  ${c.dim}press ${c.reset}${c.yellow}i${c.reset} ${c.dim}to toggle${c.reset}`);
+console.log(`  ${c.dim}${"─".repeat(50)}${c.reset}`);
 console.log();
-
-// Stdin handler - single letter toggles
-process.stdin.setRawMode?.(true);
-process.stdin.on("data", (key) => {
-  const char = key.toString();
-
-  // Ctrl+C
-  if (char === "\x03") {
-    console.log(`\n  ${c.dim}stopping...${c.reset}`);
-    cleanup();
-    process.exit(0);
-  }
-
-  // i = toggle interactive
-  if (char === "i" || char === "I") {
-    liveInteractive = !liveInteractive;
-    sessionConfig.readonly = !liveInteractive;
-
-    // Re-render status line
-    const newStatus = [
-      liveInteractive ? `${c.yellow}●${c.reset} interactive` : `${c.dim}○ read-only${c.reset}`,
-      liveConsensusMode ? `${c.magenta}●${c.reset} consensus${liveConsensusFixed ? ` ${liveConsensusFixed}` : " auto"}` : null,
-      record ? `${c.red}◉${c.reset} rec` : null,
-    ].filter(Boolean);
-
-    process.stdout.write(`\r  ${newStatus.join(`  ${c.dim}│${c.reset}  `)}                              \n`);
-    broadcastState();
-  }
-});
 
 // Cleanup
 const cleanup = () => {
-  process.stdin.setRawMode?.(false);
   ttyd.kill();
   tunnel?.kill();
   server?.stop();

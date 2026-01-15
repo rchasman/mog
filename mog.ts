@@ -403,9 +403,11 @@ const status = [
 
 // Print output
 console.log();
-console.log(`  ${c.bold}mog${c.reset} ${c.dim}›${c.reset} ${cmd.join(" ")}`);
+console.log(`\x1b[90m┌${"─".repeat(shareUrl.length + 4)}┐\x1b[0m`);
+console.log(`\x1b[90m│\x1b[0m  \x1b[1;36m${shareUrl}\x1b[0m  \x1b[90m│\x1b[0m`);
+console.log(`\x1b[90m└${"─".repeat(shareUrl.length + 4)}┘\x1b[0m`);
 console.log();
-console.log(`  ${c.cyan}${shareUrl}${c.reset}`);
+console.log(`  ${c.dim}$\x1b[0m ${cmd.join(" ")}`);
 console.log();
 console.log(`  ${status.join(`  ${c.dim}│${c.reset}  `)}`);
 console.log();
